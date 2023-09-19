@@ -1,0 +1,30 @@
+<launch>
+   <!--!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!！-->
+   <!-- ！！！！！！！！！！！实际飞行use_gazebo一定使用fasle，避免自动切换offboard！！！！！！！！！！！！！ -->
+   <!-- ！！！！！！！！！！！实际飞行use_gazebo一定使用fasle，避免自动切换offboard！！！！！！！！！！！！！ -->
+   <!-- ！！！！！！！！！！！实际飞行use_gazebo一定使用fasle，避免自动切换offboard！！！！！！！！！！！！！ -->
+   <!--!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!！-->
+   <!-- mavros -->
+   <arg name="odom_topic" default="/mavros/local_position/odom"/>
+   <arg name="pose_topic" default="/mavros/local_position/pose" />
+   <include file="$(find px4_offboard)/launch/fast_planner/px4_fast_planner.launch">
+      <arg name="odom_topic" value="$(arg odom_topic)"/>
+      <arg name="pose_topic" value="$(arg pose_topic)" />
+      <arg name="pointCloud_tag" value="/robot/dlio/map_node/map"/>
+      <!-- aloam: /laser_cloud_map floam: /map lidar: /3Dlidar16_scan DLO:/robot/dlo/map_node/map lio-sam-mid360:/lio_sam/mapping/map_global-->
+      <arg name="takeoff_height" value="1.0" />
+   </include>
+
+
+   <node pkg="tf" type="static_transform_publisher" name="world2map" args="0 0 0 0 0 0  world map  40" />
+   <include file="$(find mavros)/launch/px4.launch"/>
+
+   <!--- Run mid360-->
+   <include file="$(find livox_ros_driver2)/launch_ROS1/msg_MID360.launch">
+      <arg name="xfer_format" value="1"/>
+   </include>
+
+    <!-- <include file="$(find lio_sam)/launch/run6axis.launch"/> -->
+   <include file="$(find direct_lidar_inertial_odometry)/launch/dlio.launch"/> 
+
+</launch>

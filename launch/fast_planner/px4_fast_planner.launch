@@ -1,0 +1,92 @@
+<launch>
+
+    <!-- For sim -->
+    <!--!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!！-->
+    <!-- ！！！！！！！！！！！实际飞行use_gazebo一定使用fasle，避免自动切换offboard！！！！！！！！！！！！！ -->
+    <!-- ！！！！！！！！！！！实际飞行use_gazebo一定使用fasle，避免自动切换offboard！！！！！！！！！！！！！ -->
+    <!-- ！！！！！！！！！！！实际飞行use_gazebo一定使用fasle，避免自动切换offboard！！！！！！！！！！！！！ -->
+    <!--!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!！-->
+    <arg name="use_gazebo" default="false"/>
+
+    <!-- MAVROS configs -->
+    <arg name="fcu_url" default="udp://:14540@localhost:14557"/>
+    <arg name="respawn_mavros" default="false"/>
+    <!-- Planner configs -->
+    <!-- WARNING 设定值时保证不使用过大内存，12G内存条可以使用的值是40，40，10，0.1 -->
+    <!-- 22 22 40 0.18 -->
+    <arg name="map_size_x" default="30.0"/>
+    <arg name="map_size_y" default="20.0"/>
+    <arg name="map_size_z" default="3.0"/>
+    <arg name="resolution" default="0.2"/>
+    
+    <arg name="odom_topic" default="/mavros/local_position/odom" />
+    <!-- <arg name="camera_pose_topic" default="/camera/pose"/>
+    <arg name="depth_topic" default="/camera/depth/image_raw"/> -->
+    <arg name="lidar_cloud" default="/global_map"/>
+    <arg name="max_vel" default="0.7" />
+    <arg name="max_acc" default="0.5"/>
+
+    <!-- Initial drone's position in Gazebo -->
+    <arg name="init_pos_x" default="0.0" />
+    <arg name="init_pos_y" default="0.0" />
+    <!-- takeoff height -->
+    <arg name="takeoff_height" default="1.0" />
+
+    <!-- Fast planner -->
+    <!-- 修改topo_replan_fsm.cpp的85行target_point_(2) = 1.0;设置z高度 -->
+    <!-- 修改plan_manager.cpp的第666行yaw的值设定轨迹中的偏航角 -->
+    <include file="$(find px4_offboard)/launch/fast_planner/px4_topo_replan.launch" >
+        <arg name="max_vel" value="$(arg max_vel)" />
+        <!-- 尝试使用1/10的加速度，效果不明显 -->
+        <arg name="max_acc" value="$(eval arg('max_acc')/10)" />
+        <arg name="map_size_x" value="$(arg map_size_x)"/>
+        <arg name="map_size_y" value="$(arg map_size_y)"/>
+        <arg name="map_size_z" value="$(arg map_size_z)"/>
+        <arg name="resolution" value="$(arg resolution)"/>
+        <arg name="odom_topic" value="$(arg odom_topic)" />
+        <arg name="lidar_cloud" value="$(arg lidar_cloud)"/>
+    </include>
+
+    <!-- Geometric controller -->
+    <arg name="pose_topic" default="/mavros/local_position/pose" />
+    <arg name="Geometric" default="false"/>
+    <group if="$(arg Geometric)" >
+        <include file="$(find px4_offboard)/launch/geometric_controller.launch">
+            <arg name="pose_topic" value="$(arg pose_topic)" />
+            <arg name="gazebo_simulation" value="$(arg use_gazebo)" />
+            <arg name="max_acc" value="2.0" />
+            <param name="normalizedthrust_constant" value="0.06"/>
+            <param name="normalizedthrust_offset" value="0.1"/>
+            <param name="Kp_x" value="10.0" />
+            <param name="Kp_y" value="10.0" />
+            <param name="Kp_z" value="20.0" />
+            <param name="Kv_x" value="2" />
+            <param name="Kv_y" value="2" />
+            <param name="Kv_z" value="10" />
+            <arg name="init_pos_x" value="0.0" />
+            <arg name="init_pos_y" value="0.0" />
+            <arg name="init_pos_z" value="$(arg takeoff_height)" />
+        </include>
+        <!-- 接受planner的姿态发布给控制器 -->
+        <node pkg="px4_offboard" name="traj_msg_converter" type="trajectory_msg_converter.py" output="screen">
+            <param name="fast_planner_traj_topic" value="planning/ref_traj"/>
+            <param name="traj_pub_topic" value="command/trajectory"/>
+        </node>
+    </group>
+    <group unless="$(arg Geometric)">
+        <node pkg="px4_offboard" name="send2fastplanner" type="planner2mavros.py" output="screen"/>
+    </group>
+
+
+    <!-- 雷达信息变化到world上，提供给fast-planner -->
+    <arg name="pointCloud_tag" default="/3Dlidar16_scan" />
+    <node pkg="px4_offboard" name="tf_cloud_topic" type="tf_cloud_fast_planner" output="screen">
+        <param name="pointCloud_tag" value="$(arg pointCloud_tag)"/>
+    </node>
+
+    <!-- 避障 -->
+    <node pkg="px4_offboard" name="collision" type="avoidance_node" output="screen"/>
+
+    <!-- Rviz -->
+    <!-- /sdf_map/occupancy_inflate   /planning/position_cmd_vis   /planning_vis/trajectory -->
+</launch>
