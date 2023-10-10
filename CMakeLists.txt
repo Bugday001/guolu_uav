@@ -5,6 +5,7 @@ find_package(PCL REQUIRED)
 find_package(catkin REQUIRED
     pcl_ros
     pcl_conversions
+    quadrotor_msgs
   )
 
 catkin_package(
@@ -20,6 +21,10 @@ catkin_package(
 
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
+find_package(Boost REQUIRED COMPONENTS system thread) 
+
+find_package( Eigen3 REQUIRED )
+include_directories(${EIGEN3_INCLUDE_DIR})
 include_directories(
 # include
   ${catkin_INCLUDE_DIRS}
@@ -52,4 +57,10 @@ add_executable(transform_node src/transformCPandIMU.cpp)
 
 target_link_libraries(transform_node
   ${catkin_LIBRARIES} ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES} ${PCL_LIBRARIES}
+)
+
+add_executable(matchHome_node src/matchHome.cpp)
+
+target_link_libraries(matchHome_node
+  ${catkin_LIBRARIES} ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES} ${PCL_LIBRARIES} ${Boost_LIBRARIES}
 )

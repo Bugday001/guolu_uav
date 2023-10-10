@@ -24,7 +24,7 @@ class sendJson():
         self.position = []
         self.ret = 0
         
-        push_url_video = "rtsp://127.0.0.1:8554/local/video"
+        push_url_video = "rtsp://192.168.0.83:8554/stream"
 
         fps = float(self.cap.get(5))
         width = int(self.cap.get(3))
@@ -57,7 +57,6 @@ class sendJson():
         while True:# 采集一帧图像
             self.ret, self.frame = self.cap.read()
             if self.ret:# 通过FFmpeg编码和推流
-                # self.saveImg = self.frame.copy()   
                 self.pipe1.stdin.write(self.frame.tostring())
 
         
@@ -70,7 +69,7 @@ class sendJson():
         # 读取一帧图像
         if self.ret:
             name = "../imgs/"+str(self.imgCnt)+"_"+str(self.position)+".jpg"
-            cv2.imwrite(name, self.saveImg)
+            cv2.imwrite(name, self.frame)
             self.imgCnt += 1
 
 

@@ -1,0 +1,5 @@
+<launch>
+    <include file="$(find web_video_server)/launch/web_video.launch"/>
+    <include file-"$(find mqtt_client)/launch/standalone.launch"/>
+    <node pkg="px4_offboard" name="mqtt_node" type="msgs_py.py" output="screen"/>
+</launch>

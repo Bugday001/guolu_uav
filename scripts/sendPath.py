@@ -8,6 +8,7 @@ import re
 import math
 import rospy
 import tf
+import yaml
 from rospkg import RosPack
 import numpy as np
 from quadrotor_msgs.msg import PositionCommand # for Fast-Planner
@@ -16,32 +17,55 @@ from geometry_msgs.msg import Quaternion
 from geometry_msgs.msg import PoseStamped, Point
 from nav_msgs.msg import Path
 from std_srvs.srv import SetBool
+from mavros_msgs.srv import CommandTOL, CommandLong
+from sensor_msgs.msg import BatteryState
 from std_msgs.msg import Empty
+from mavros_msgs.msg import RCIn
 
+rp = RosPack()
+# states
 LAND = 0
-FLY = 1
+toLAND = 1
+FLY = 2
+# 是否启用续飞功能
+Resume = 0
 class sendPath():
     def __init__(self):
-        self.i = 0
-        self.th = 0.30
+        self.TH = 0.30
         self.state = FLY
-        self.pathList = np.array([[0,4,2,0], [0,0,2,0], [0,4,3,0],[0,0,3,0],
-                                [0,4,4,0], [0,0,4,0],  [0,0.1,1,0]])
-        # self.pathList = np.array([[14,7,2,0],[0,7,1,3.14/2],[0,-7,1,3.14],[12,-7,1,-3.14/2],
-        #                             [14,7,2,0],[0,7,1,3.14/2],[0,-7,1,3.14],[12,-7,1,-3.14/2]])
-        # self.pathList = np.array([[0,0,1,0]])
+        # self.pathList = np.array([[0,4,1,0], [0,4,2,0], [0,0,2,0],[0,0,3,0],
+        #                         [0,4,3,0], [0,4,4,0],  [0,0,4,0]])
+        self.pathList = np.array([[9,6,4,0],[-9,6,1,3.14/2],[-9,-6,3,3.14],[10,-6,3,-3.14/2],
+                                    [9,6,4,0],[-9,6,1,3.14/2],[-9,-6,3,3.14],[10,-6,3,-3.14/2]])
         self.landingPosition = [0, 0, 1, 0]
+        self.logFile = open(rp.get_path("px4_offboard") + "/logs/"+str(time.time())+".log","a",encoding="UTF-8")
+        self.recordFile = open(rp.get_path("px4_offboard") + "/params/record.yaml", 'r+')
+        self.recordData = yaml.safe_load(self.recordFile)
+        self.lastPWM = -1
         self.lastUpdateTime = rospy.Time.now()
         self.cur_position = Point()
-        self.targetPoint = self.pathList[0]
+        if Resume:
+            self.i = self.recordData["index"]
+            self.targetPoint = self.pathList[self.i]
+        else:
+            self.i = 0
+            self.targetPoint = self.pathList[0]
+        
         self.island = False
         self.isOffboard = True
-
+        self.readTMatrix()  # 读取变换矩阵
         rospy.Subscriber("mavros/local_position/pose", PoseStamped, self.position_cb)
         self.waypoint_pub = rospy.Publisher("/waypoint_generator/waypoints", Path, queue_size=10)
-        rospy.Subscriber("/planning/request_traget", Empty, self.sendTargetPoint)
-        # rospy.Subscriber("mavros/state", State, callback = self.stateCallback)
-    
+        self.transformed_pose_pub = rospy.Publisher("/mavros/local_position/pose_transformed", PoseStamped, queue_size=10)
+        rospy.Subscriber("/planning/request_traget", Empty, self.sendTargetPoint, buff_size=1)
+        rospy.Subscriber("/mavros/rc/in", RCIn, self.rc_cb)
+        rospy.Subscriber("/mavros/battery", BatteryState, self.battery_cb)
+        self.rc_history = RCIn()
+
+    def __del__(self):
+        self.logFile.close()
+        self.recordFile.close()
+
     def stateCallback(self, msg):
         self.current_state = msg
         if self.current_state.mode == 'OFFBOARD':
@@ -57,7 +81,7 @@ class sendPath():
         进行修正，修正导航点和航向，最后一个是着陆的导航点，可以选择不进行变换
         """
         # 修正导航点
-        T = self.readTMatrix()
+        T = self.TMatrix
         R = T[0:3,0:3]
         t = T[0:3, 3:4]
         loc = self.pathList[:-1, 0:3].T
@@ -73,8 +97,7 @@ class sendPath():
         """
         读取初始姿态, 用于pathList的修正
         """
-        rp = RosPack()
-        path = rp.get_path("px4_uwb_lidar") + "/params/Transformation_maxtix.yaml"
+        path = rp.get_path("px4_offboard") + "/params/Transformation_maxtix.yaml"
         # 数据可能有多个空格分割，不能直接用np的库函数
         file = open(path, "r")
         lines = file.readlines()
@@ -85,21 +108,76 @@ class sendPath():
             while each[i]==' ':
                 i += 1
             each = each[i:].replace('\n', '')
-            nums = np.array(re.split(r' *', each))
+            nums = np.fromstring(each, dtype=float, sep=" ")
             data[cnt] = nums
             cnt += 1
         file.close()
+        self.TMatrix = data
         print("变换矩阵：")
         print(data)
-        return data
     
+    def rc_cb(self, msg):
+        """
+        1950 1050
+        """
+        # 按键返航
+        if len(self.rc_history.channels) == 0:
+            self.rc_history = msg
+            return
+        if self.rc_history.channels[7] == 1050 and msg.channels[7]==1950 and self.state == FLY:  # 对应B按键
+            self.state = LAND
+            self.logFile.write(str(rospy.Time.now().to_sec())+" "+"RC LANDING"+"\n")
+            print("RC LANDING")
+        pwm = ((msg.channels[7]-1050.0)/900*2)+(-1)
+        if abs(pwm-self.lastPWM) >= 0.1:
+            rospy.wait_for_service('/mavros/cmd/command')
+            try:
+                # 制作服务的handle
+                cmd = CommandLong()
+                cmd.broadcast = False
+                cmd.command = 187
+                cmd.confirmation = True
+                cmd.param1 = pwm
+                land_srv = rospy.ServiceProxy('/mavros/cmd/command', cmd)
+                # 调用服务
+                resp = land_srv.call()
+            except(rospy.ServiceException, e):
+                print("Service call failed: %s"%e)
+
+        self.rc_history = msg
+    
+    def battery_cb(self, msg):
+        if msg.voltage < 18.5:
+            self.state = LAND
+            self.logFile.write(str(rospy.Time.now().to_sec())+" "+"LOW VOLTAGE LANDING"+"\n")
+            print("LOW VOLTAGE LANDING")
+
     def reachGoal(self):
         """
         判断飞机当前位置和目标位置差是否都小于阈值
         """
-        return abs(self.cur_position.x-self.targetPoint[0])<self.th and \
-        abs(self.cur_position.y-self.targetPoint[1])<self.th and \
-        abs(self.cur_position.z-self.targetPoint[2])<self.th
+        return abs(self.cur_position.x-self.targetPoint[0])<self.TH and \
+        abs(self.cur_position.y-self.targetPoint[1])<self.TH and \
+        abs(self.cur_position.z-self.targetPoint[2])<self.TH
+
+
+    def matrix2quaternion(m):
+        w = ((np.trace(m) + 1) ** 0.5) / 2
+        x = (m[2][1] - m[1][2]) / (4 * w)
+        y = (m[0][2] - m[2][0]) / (4 * w)
+        z = (m[1][0] - m[0][1]) / (4 * w)
+        return w,x,y,z
+
+
+    def quaternion2matrix(q):
+        """
+            四元数转旋转矩阵
+        """
+        w,x,y,z = q
+        return np.array([[1-2*y*y-2*z*z, 2*x*y-2*z*w, 2*x*z+2*y*w],
+                [2*x*y+2*z*w, 1-2*x*x-2*z*z, 2*y*z-2*x*w],
+                [2*x*z-2*y*w, 2*y*z+2*x*w, 1-2*x*x-2*y*y]])
+
 
     def position_cb(self, msg):
         """
@@ -110,6 +188,36 @@ class sendPath():
             print("add!!!!!!!!!!!!!!!!", self.i)
             self.i += 1
             self.targetPoint = self.pathList[self.i]
+            if self.state == LAND:
+                self.recordData["index"] = self.i-1
+                print(self.recordData)
+                self.recordFile.seek(0)
+                self.recordFile.truncate()
+                yaml.safe_dump(self.recordData, self.recordFile)
+                self.i = len(self.pathList)-1
+                self.targetPoint = self.landingPosition
+        
+        # ------------------------------发布锅炉坐标系下的无人机位姿态-------------------------
+        # T = self.TMatrix
+        # R = T[0:3,0:3]
+        # t = T[0:3, 3:4]
+        # loc = np.array([self.cur_position.x, self.cur_position.y, self.cur_position.z])
+        # quatern = [msg.pose.orientation.w, msg.pose.orientation.x, msg.pose.orientation.y, msg.pose.orientation.z]
+        # loc_matirx = quaternion2matrix(quatern)
+        # loc_matirx = np.dot(R, loc_matirx)
+        # new_quatern = matrix2quaternion(loc_matirx)
+        # loc = np.dot(R, (loc+t))
+        # new_pose = msg
+        # new_pose.pose.position.x = loc[0]
+        # new_pose.pose.position.y = loc[1]
+        # new_pose.pose.position.z = loc[2]
+
+        # new_pose.pose.orientation.w = new_quatern[0]
+        # new_pose.pose.orientation.x = new_quatern[0]
+        # new_pose.pose.orientation.y = new_quatern[1]
+        # new_pose.pose.orientation.z = new_quatern[2]
+
+        # self.transformed_pose_pub.publish(new_pose)
 
     def sendTargetPoint(self, msg):
         """
@@ -120,7 +228,8 @@ class sendPath():
         if self.isOffboard==False:
             return
         print("tagert point: " + str(self.targetPoint))
-        if self.targetPoint == np.array([]):
+        self.logFile.write(str(rospy.Time.now().to_sec())+" "+str(self.targetPoint)+"\n")
+        if len(self.targetPoint) == 0:
             return 1
         time_now = rospy.Time.now()
         init_path = Path()
@@ -159,10 +268,11 @@ class sendPath():
         返航着陆
         """
         print("LAND")
-        rospy.wait_for_service('land')
+        self.logFile.write(str(rospy.Time.now().to_sec())+" "+"Call landing service"+"\n")
+        rospy.wait_for_service('/mavros/cmd/land')
         try:
             # 制作服务的handle
-            land_srv = rospy.ServiceProxy('land', SetBool)
+            land_srv = rospy.ServiceProxy('/mavros/cmd/land', CommandTOL)
             #调用服务
             resp = land_srv.call()
         except(rospy.ServiceException, e):
@@ -173,12 +283,4 @@ class sendPath():
 if __name__=="__main__":
     rospy.init_node("sendPath")
     sender = sendPath()
-    rate = rospy.Rate(0.4) # 
-    # while not rospy.is_shutdown():
-    #     # state = sender.sendTargetPoint()
-    #     if(sender.state==LAND):
-    #         sender.landing()
-    #         break
-    #     rate.sleep()
-    
     rospy.spin()
