@@ -1,6 +1,8 @@
 #! /usr/bin/env python3
 # -*- coding: UTF-8 -*-
-
+"""
+    mqtt messages
+"""
 import json
 
 import rospy
@@ -15,13 +17,13 @@ from sensor_msgs.msg import Temperature
 
 class sendJson():
     def __init__(self):
-        rospy.Subscriber("/mavros/local_position/pose", PoseStamped, self.position_cb)
+        self.pub = rospy.Publisher('/ping/ros', String, queue_size=10)
+        self.state = {"time": 0.0, "position": [], "orientation": [], "battery": [],"temperature" : [] , "flystate" : []}
+        
+        rospy.Subscriber("/mavros/local_position/pose_transformed", PoseStamped, self.position_cb)
         rospy.Subscriber("/mavros/battery", BatteryState, self.battery_cb)
         rospy.Subscriber("/mavros/state", State, self.flystate_cb)
         rospy.Subscriber("/mavros/imu/temperature_imu", Temperature, self.temperature_cb)
-
-        self.pub = rospy.Publisher('/ping/ros', String, queue_size=10)
-        self.state = {"time": 0.0, "position": [], "orientation": [], "battery": [],"temperature" : [] , "flystate" : []}
         rospy.Timer(rospy.Duration(1), self.time_cb, oneshot=False)
         
     def position_cb(self, msg):
@@ -36,6 +38,8 @@ class sendJson():
 
     def flystate_cb(self, msg):
         self.state["flystate"] = [msg.mode]
+        if not msg.armed:
+            self.state["flystate"] = ["LAND"]
 
     def temperature_cb(self, msg):
         self.state["temperature"] = [msg.temperature]

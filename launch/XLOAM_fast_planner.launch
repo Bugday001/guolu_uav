@@ -1,4 +1,5 @@
 <launch>
+   <param name="use_sim_time" value="false" />
    <!--!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!！-->
    <!-- ！！！！！！！！！！！实际飞行use_gazebo一定使用fasle，避免自动切换offboard！！！！！！！！！！！！！ -->
    <!-- ！！！！！！！！！！！实际飞行use_gazebo一定使用fasle，避免自动切换offboard！！！！！！！！！！！！！ -->
@@ -15,10 +16,12 @@
       <arg name="takeoff_height" value="1.0" />
    </include>
 
-
+   <!-- <node pkg="tf" type="static_transform_publisher" name="world2globalFrame" args="-3.33 -3.64 0 0 0 0  world global_frame  40" /> -->
+   <node pkg="tf" type="static_transform_publisher" name="robotOdom2world" args="0 0 0 0 0 0  robot/odom world  40" />
    <node pkg="tf" type="static_transform_publisher" name="world2map" args="0 0 0 0 0 0  world map  40" />
+   <!-- <node pkg="tf" type="static_transform_publisher" name="world2mapss" args="0 0 0 0 0 0  robot/odom robott/odom  40" /> -->
    <include file="$(find mavros)/launch/px4.launch"/>
-
+   <rosparam command="load" file="$(find px4_offboard)/config/transform.yaml"/>
    <!--- Run mid360-->
    <include file="$(find livox_ros_driver2)/launch_ROS1/msg_MID360.launch">
       <arg name="xfer_format" value="1"/>

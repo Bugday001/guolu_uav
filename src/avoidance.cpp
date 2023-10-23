@@ -60,7 +60,7 @@ public:
         isCollision.data = 0;  //0:safe, 1:stop
 
         bool negative = false;
-        float crop_size_ = 1.5; // 距离-1到1
+        float crop_size_ = 1; // 距离-1到1
         clipper.setMin(Eigen::Vector4f(-crop_size_, -crop_size_, -0.2, 1.0));
         clipper.setMax(Eigen::Vector4f(crop_size_, crop_size_, crop_size_, 1.0));
         clipper.setNegative(negative);

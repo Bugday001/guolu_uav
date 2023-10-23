@@ -64,3 +64,9 @@ add_executable(matchHome_node src/matchHome.cpp)
 target_link_libraries(matchHome_node
   ${catkin_LIBRARIES} ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES} ${PCL_LIBRARIES} ${Boost_LIBRARIES}
 )
+
+add_executable(transformPC_node src/Tools/transformPC.cpp)
+
+target_link_libraries(transformPC_node
+  ${catkin_LIBRARIES} ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES} ${PCL_LIBRARIES} ${Boost_LIBRARIES}
+)

@@ -1,0 +1,7 @@
+# 平移点云用
+input_path: "/home/denext/catkin_ws/src/px4_offboard/models/dlio_map.ply"
+output_path: "/home/denext/catkin_ws/src/px4_offboard/models/test_moved.ply"
+transformation: [0.999622,0.0274854,0,3.25654,
+-0.0274854,0.999622,0,3.51752,
+0,0,1,0,
+0,0,0,1 ]

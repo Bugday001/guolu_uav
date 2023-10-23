@@ -8,6 +8,7 @@
 #include <pcl/console/time.h>
 #include <pcl/features/normal_3d.h>
 #include <pcl/io/pcd_io.h>
+#include <pcl/io/ply_io.h>
 #include <pcl/registration/icp.h>
 #include <pcl/registration/transformation_estimation_point_to_plane.h>
 #include <pcl/visualization/pcl_visualizer.h>
@@ -20,7 +21,8 @@
 
 using namespace pcl;
 using namespace std;
-
+std::string pcd_target_path;
+Eigen::Matrix4f guess;
 /**
  *    可视化
 */
@@ -33,15 +35,15 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud_result, pcl::PointCloud<pcl::PointXYZ
 
     pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> color0(cloud_result, 0, 0, 255); // 蓝
     viewer_final->addPointCloud<pcl::PointXYZ>(cloud_source, color0, "cloud0");
-    viewer_final->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, "cloud0");
+    viewer_final->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 3, "cloud0");
 
     pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> color1(cloud_result, 255, 0, 0); // 红
     viewer_final->addPointCloud<pcl::PointXYZ>(cloud_result, color1, "cloud1");
-    viewer_final->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, "cloud1");
+    viewer_final->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 3, "cloud1");
 
     pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> color2(filtered_target_cloud, 0, 255, 0); // 绿
     viewer_final->addPointCloud<pcl::PointXYZ>(filtered_target_cloud, color2, "cloud2");
-    viewer_final->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, "cloud2");
+    viewer_final->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 3, "cloud2");
 
     viewer_final->addCoordinateSystem(1.0);
     viewer_final->initCameraParameters();
@@ -81,7 +83,7 @@ Eigen::Matrix4f PointToPlane(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud1, pcl::Po
     icp.setMaximumIterations(200);
     icp.setTransformationEpsilon(1e-3);
     pcl::PointCloud<pcl::PointNormal> output;
-    icp.align(output);
+    icp.align(output, guess);
     return icp.getFinalTransformation();
 }
 
@@ -151,9 +153,10 @@ void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr &cloud)
     pcl::PointCloud<pcl::PointXYZ>::Ptr pc(new pcl::PointCloud<pcl::PointXYZ>); // 目标文件
     pcl::fromROSMsg(*cloud, *pc);
     flag = 1;
-    std::string pcd_target_path = ros::package::getPath("px4_offboard")+"/models/dlio_map.pcd";
+    // std::string pcd_target_path = ros::package::getPath("px4_offboard")+"/models/dlio_map.pcd";
+
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_target(new pcl::PointCloud<pcl::PointXYZ>); // 目标文件
-    if (pcl::io::loadPCDFile<pcl::PointXYZ>(pcd_target_path, *cloud_target) == -1)
+    if (pcl::io::loadPLYFile<pcl::PointXYZ>(pcd_target_path, *cloud_target) == -1)
     {
         PCL_ERROR("Couldn't read file cloud2\n");
         return;
@@ -169,7 +172,11 @@ int main(int argc, char **argv)
 {
     ros::init(argc, argv, "matchHome");
     ros::NodeHandle nh;
+    nh.param<string>("/matchHome_node/output_path", pcd_target_path, "");
     std::string pointCloud_tag = "/robot/dlio/odom_node/pointcloud/deskewed";
+    vector<float> extRotV;
+    nh.param<vector<float>>("/matchHome_node/transformation", extRotV, vector<float>());
+    guess = Eigen::Map<const Eigen::Matrix<float, -1, -1, Eigen::RowMajor>>(extRotV.data(), 4, 4);
     ros::Subscriber subscriber = nh.subscribe(pointCloud_tag, 10, &pointCloudCallback);
     ros::spin();
     return 0;

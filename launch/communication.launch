@@ -1,5 +1,13 @@
 <launch>
-    <include file="$(find web_video_server)/launch/web_video.launch"/>
-    <include file-"$(find mqtt_client)/launch/standalone.launch"/>
+    <arg name="mqtt_address" default="192.168.3.6"/>
+    <arg name="web_address" default="192.168.0.84"/>
+    <arg name="mqtt_port" default="1883"/>
+    <include file="$(find web_video_server)/launch/web_video.launch">
+        <arg name="address" value="$(arg web_address)"/>
+    </include>
+    <include file="$(find mqtt_client)/launch/standalone.launch">
+        <arg name="host" value="$(arg mqtt_address)"/>
+        <arg name="port" value="$(arg mqtt_port)"/>
+    </include>
     <node pkg="px4_offboard" name="mqtt_node" type="msgs_py.py" output="screen"/>
 </launch>

@@ -1,22 +1,6 @@
 <launch>
-   <!--!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!！-->
-   <!-- ！！！！！！！！！！！实际飞行use_gazebo一定使用fasle，避免自动切换offboard！！！！！！！！！！！！！ -->
-   <!-- ！！！！！！！！！！！实际飞行use_gazebo一定使用fasle，避免自动切换offboard！！！！！！！！！！！！！ -->
-   <!-- ！！！！！！！！！！！实际飞行use_gazebo一定使用fasle，避免自动切换offboard！！！！！！！！！！！！！ -->
-   <!--!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!！-->
-   <!-- mavros -->
-   <arg name="odom_topic" default="/mavros/local_position/odom"/>
-   <arg name="pose_topic" default="/mavros/local_position/pose" />
-
+<param name="use_sim_time" value="true" />
+   <node pkg="tf" type="static_transform_publisher" name="robotOdom2world" args="0 0 0 0 0 0  robot/odom world  40" />
    <node pkg="tf" type="static_transform_publisher" name="world2map" args="0 0 0 0 0 0  world map  40" />
-   <include file="$(find mavros)/launch/px4.launch"/>
-
-   <!--- Run mid360-->
-   <include file="$(find livox_ros_driver2)/launch_ROS1/msg_MID360.launch">
-      <arg name="xfer_format" value="1"/>
-   </include>
-
-   <!-- <include file="$(find lio_sam)/launch/run6axis.launch"/> -->
-   <include file="$(find direct_lidar_inertial_odometry)/launch/dlio.launch"/>
 
 </launch>
